@@ -1,0 +1,133 @@
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
+int GPSBaud = 9600;
+String msg;
+double phone_lat;
+double phone_long;
+// Create a TinyGPS++ object
+#include <LiquidCrystal.h>
+const int rs = 12, en = 11, d4 = 2, d5 = 5, d6 = 6, d7 = 7;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+int led1 = 8;
+int led2 = 9;
+int led3 = 10;
+int led4 = 13;
+TinyGPSPlus gps;
+
+// Create a software serial port called "gpsSerial"
+SoftwareSerial gpsSerial(4,3);
+
+void setup()
+{
+  lcd.begin(16, 2);
+  lcd.print("    Welcome!");
+  delay(2000);
+  for (int positionCounter = 0; positionCounter < 16; positionCounter++) {
+    // scroll one position right:
+    lcd.scrollDisplayRight();
+    // wait a bit:
+    delay(150);
+  }
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("No data");
+  // Start the Arduino hardware serial port at 9600 baud
+  Serial.begin(9600);
+  msg = "";
+  // Start the software serial port at the GPS's default baud
+  gpsSerial.begin(GPSBaud);
+
+}
+
+void loop()
+{
+    // To read message received from other Bluetooth Device
+  if (Serial.available() > 0){ // Check if there is data coming
+    msg = Serial.readString(); // Read the message as String
+    int index = msg.indexOf(';');
+    String lat_phone = msg.substring(0,index);
+    String long_phone = msg.substring(index+1,msg.length());
+    String one = "Lat:" + lat_phone;
+    String two = "Lon:" + long_phone;
+    lcd.setCursor(0, 0);
+    lcd.print(one);
+    lcd.setCursor(0, 1);
+    lcd.print(two);    
+    phone_lat = lat_phone.toDouble();
+    phone_long = long_phone.toDouble();
+ 
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  pinMode(led3, OUTPUT);
+  pinMode(led4, OUTPUT);   
+
+    digitalWrite(led1, LOW);  
+  digitalWrite(led2, LOW);
+  digitalWrite(led3, LOW);
+  digitalWrite(led4, LOW);
+  }
+  
+  // This sketch displays information every time a new sentence is correctly encoded.
+  while (gpsSerial.available() > 0)
+    if (gps.encode(gpsSerial.read()))
+      displayInfo();
+
+  // If 5000 milliseconds pass and there are no characters coming in
+  // over the software serial port, show a "No GPS detected" error
+  if (millis() > 5000 && gps.charsProcessed() < 10)
+  {
+    
+    Serial.println("No GPS detected");
+  }
+}
+
+void displayInfo()
+{
+  if (gps.location.isValid())
+  {
+    double lat_ard = gps.location.lat();
+    double long_ard = gps.location.lng();
+
+    Serial.println(String(lat_ard,7) + ";" + String(long_ard,7));
+    double lat_diff = phone_lat-lat_ard;
+    double long_diff = phone_long-long_ard;
+    if ((lat_diff > 0) && (long_diff) >0)
+    {
+      digitalWrite(led1, HIGH);  
+      digitalWrite(led2, LOW);
+      digitalWrite(led3, LOW);
+      digitalWrite(led4, LOW);
+          
+    }
+    if ((lat_diff > 0) && (long_diff) <0)
+    {
+      digitalWrite(led1, LOW);  
+      digitalWrite(led2, HIGH);
+      digitalWrite(led3, LOW);
+      digitalWrite(led4, LOW);     
+     
+    }
+    if ((lat_diff < 0) && (long_diff) >0)
+    {
+      digitalWrite(led1, LOW);  
+      digitalWrite(led2, LOW);
+      digitalWrite(led3, HIGH);
+      digitalWrite(led4, LOW); 
+         
+    }
+     if((lat_diff < 0) && (long_diff) <0)
+    {
+      digitalWrite(led1, LOW);  
+      digitalWrite(led2, LOW);
+      digitalWrite(led3, LOW);
+      digitalWrite(led4, HIGH);   
+       
+    }
+  }
+  else
+  {
+    Serial.println("Location: Not Available");
+  }
+  delay(1000);
+}

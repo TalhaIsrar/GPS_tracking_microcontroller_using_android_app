@@ -1,0 +1,156 @@
+#define F_CPU 8000000ul
+#include <avr/io.h>
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+#define USART_BAUDRATE 9600
+#define BAUD_PRESCALE (((F_CPU / (USART_BAUDRATE * 16UL))) - 1)
+#define LCDPORTDIR DDRB
+#define LCDPORT PORTB
+#define rs 0
+#define rw 1
+#define en 2
+
+#define RSLow (LCDPORT&=~(1<<rs))
+#define RSHigh (LCDPORT|=(1<<rs))
+#define RWLow (LCDPORT&=~(1<<rw))
+#define ENLow (LCDPORT&=~(1<<en))
+#define ENHigh (LCDPORT|=(1<<en))
+
+enum
+{
+	CMD=0,
+	DATA,
+};
+
+char buf[100];
+volatile char ind,flag,stringReceived;
+char gpgga[]={'$','G','P','G','G','A'};
+char latitude[12];
+char logitude[12];
+void serialwrite(char ch);
+void lcdwrite(char ch,char r)
+{
+	LCDPORT=ch & 0xF0;
+	RWLow;
+	if(r == 1)
+	RSHigh;
+	else
+	RSLow;
+	ENHigh;
+	_delay_ms(1);
+	ENLow;
+	_delay_ms(1);
+	LCDPORT=ch<<4 & 0xF0;
+	RWLow;
+	if(r == 1)
+	RSHigh;
+	else
+	RSLow;
+	ENHigh;
+	_delay_ms(1);
+	ENLow;
+	_delay_ms(1);
+}
+
+void lcdprint(char *str)
+{
+	while(*str)
+	{
+		lcdwrite(*str++,DATA);
+		//__delay_ms(20);
+	}
+}
+
+void lcdbegin()
+{
+	char lcdcmd[5]={0x02,0x28,0x0E,0x06,0x01};
+	for(int i=0;i<5;i++)
+	lcdwrite(lcdcmd[i], CMD);
+}
+void serialbegin()
+{
+	UCSRC = (1 << URSEL) | (1 << UCSZ0) | (1 << UCSZ1);
+	UBRRH = (BAUD_PRESCALE >> 8);
+	UBRRL = BAUD_PRESCALE;
+	UCSRB=(1<<RXEN)|(1<<TXEN)|(1<<RXCIE);
+}
+
+ISR(USART_RXC_vect)
+{
+	char ch=UDR;
+	buf[ind]=ch;
+	ind++;
+	if(ind<7)
+	{
+		if(buf[ind-1] != gpgga[ind-1])               // $GPGGA
+		ind=0;
+	}
+	if(ind>=50)
+	stringReceived=1;
+}
+
+void serialwrite(char ch)
+{
+	while ((UCSRA & (1 << UDRE)) == 0);
+	UDR = ch;
+}
+
+void serialprint(char *str)
+{
+	while(*str)
+	{
+		serialwrite(*str++);
+	}
+}
+
+void serialprintln(char *str)
+{
+	serialprint(str);
+	serialwrite(0x0d);
+	serialwrite(0x0a);
+}
+
+int main()
+{
+	LCDPORTDIR=0xFF;
+	serialbegin();
+	lcdbegin();
+	lcdwrite(1,0);
+	lcdprint("Waiting...");
+	_delay_ms(1000);
+	sei();
+	while(1)
+	{
+		if(stringReceived == 1)
+		{
+			cli();
+			ind=0;
+			stringReceived=0;
+			serialprintln(" ");
+			lcdwrite(0x80,0);
+			lcdprint("Lat: ");
+			serialprint("Latitude:");
+			for(int i=20;i<=26;i++)
+			{
+				latitude[i]=buf[i];
+				lcdwrite(latitude[i],1);
+				serialwrite(latitude[i]);
+			}
+			serialprintln(" ");
+			lcdwrite(192,0);
+			lcdprint("Log: ");
+			serialprint("Logitude:");
+			for(int i=33;i<40;i++)
+			{
+				logitude[i]=buf[i];
+				lcdwrite(logitude[i],1);
+				serialwrite(logitude[i]);
+			}
+			serialprintln(" ");
+			sei();
+		}
+	}
+
+	return 0;
+}
